@@ -118,8 +118,80 @@ fn print_qdimacs(qdimacs: &QDimacs) {
     }
 }
 
+use std::collections::HashMap;
+
+type Assignment = HashMap<i32, bool>;
+
+fn count_models(q: &QDimacs) -> u64 {
+    let vars: Vec<i32> = q
+    .quantifiers
+    .iter()
+    .flat_map(|block| block.vars.iter().copied())
+    .collect();
+
+    fn eval_clause(clause: &Clause, assignment: &Assignment) -> bool {
+        for &lit in clause {
+            let var = lit.abs();
+            let sign = lit > 0;
+
+            if let Some(&val) = assignment.get(&var) {
+                if val == sign {
+                    return true; // clause satisfied
+                }
+            }
+        }
+        false
+    }
+
+    fn eval_formula(q: &QDimacs, assignment: &Assignment) -> bool {
+        q.clauses.iter().all(|clause| eval_clause(clause, assignment))
+    }
+
+    fn dfs(
+        q: &QDimacs,
+        vars: &[i32],
+        depth: usize,
+        assignment: &mut Assignment,
+        eval_formula: &dyn Fn(&QDimacs, &Assignment) -> bool,
+    ) -> u64 {
+        // leaf: all variables assigned
+        if depth == vars.len() {
+            return if eval_formula(q, assignment) { 1 } else { 0 };
+        }
+
+        let var = vars[depth];
+
+        // left branch: false
+        assignment.insert(var, false);
+        let left = dfs(q, vars, depth + 1, assignment, eval_formula);
+
+        // right branch: true
+        assignment.insert(var, true);
+        let right = dfs(q, vars, depth + 1, assignment, eval_formula);
+
+        let is_universal = q.quantifiers.iter().any(|block| {
+            matches!(block.qtype, QuantifierType::ForAll)
+            && block.vars.contains(&var)
+        });
+        if is_universal {
+            left * right
+        } else {
+            left + right
+        }
+    }
+
+    let mut assignment = HashMap::new();
+
+    dfs(q, &vars, 0, &mut assignment, &eval_formula)
+}
+
 fn main() {
     let qdimacs = parse_file("example.qdimacs").unwrap();
     print_qdimacs(&qdimacs);
+
+    let count = count_models(&qdimacs);
+
+    println!("Model count: {}", count);
+
     println!("Hello, world!");
 }
