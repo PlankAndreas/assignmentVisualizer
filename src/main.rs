@@ -153,36 +153,139 @@ fn count_models(q: &QDimacs) -> u64 {
         depth: usize,
         assignment: &mut Assignment,
         eval_formula: &dyn Fn(&QDimacs, &Assignment) -> bool,
-    ) -> u64 {
+        dot: &mut String,
+        next_id: &mut usize,
+    ) -> (u64, usize) {
+        let my_id = *next_id;
+        *next_id += 1;
         // leaf: all variables assigned
         if depth == vars.len() {
-            return if eval_formula(q, assignment) { 1 } else { 0 };
+            let value = if eval_formula(q, assignment) { 1 } else { 0 };
+
+            let color = if value == 1 { "green" } else { "gray" };
+
+            dot.push_str(&format!(
+                r#"{id} [label="{value}", shape=box, color="{color}"];"#,
+                id = my_id
+            ));
+
+            return (value, my_id);
         }
 
         let var = vars[depth];
 
         // left branch: false
         assignment.insert(var, false);
-        let left = dfs(q, vars, depth + 1, assignment, eval_formula);
-
+        let (left, left_id) = dfs(
+            q,
+            vars,
+            depth + 1,
+            assignment,
+            eval_formula,
+            dot,
+            next_id,
+        );
         // right branch: true
         assignment.insert(var, true);
-        let right = dfs(q, vars, depth + 1, assignment, eval_formula);
-
+        let (right, right_id) = dfs(
+            q,
+            vars,
+            depth + 1,
+            assignment,
+            eval_formula,
+            dot,
+            next_id,
+        );
         let is_universal = q.quantifiers.iter().any(|block| {
             matches!(block.qtype, QuantifierType::ForAll)
             && block.vars.contains(&var)
         });
-        if is_universal {
+        let weight = if is_universal {
             left * right
         } else {
             left + right
-        }
+        };
+        let qsymbol = if is_universal { "A" } else { "E" };
+        let color = if is_universal { "red" } else { "blue" };
+
+        dot.push_str(&format!(
+            r#"{id} [label="x{var}\n{q}\nw={w}", color="{color}"];"#,
+            id = my_id,
+            var = var,
+            q = qsymbol,
+            w = weight,
+        ));
+
+        dot.push_str(&format!(
+            r#"{parent} -> {child} [label="0"];"#,
+            parent = my_id,
+            child = left_id,
+        ));
+
+        dot.push_str(&format!(
+            r#"{parent} -> {child} [label="1"];"#,
+            parent = my_id,
+            child = right_id,
+        ));
+        (weight, my_id)
     }
 
     let mut assignment = HashMap::new();
+    let mut dot = String::from("digraph G {\n");
+    dot.push_str("node [shape=circle];\n");
 
-    dfs(q, &vars, 0, &mut assignment, &eval_formula)
+    let mut next_id = 0;
+
+    let (result, _) = dfs(
+        q,
+        &vars,
+        0,
+        &mut assignment,
+        &eval_formula,
+        &mut dot,
+        &mut next_id,
+    );
+    dot.push_str("}\n");
+
+    fn open_image(path: &str) {
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/C", "start", "", path])
+                .status()
+                .expect("failed to open image");
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open")
+                .arg(path)
+                .status()
+                .expect("failed to open image");
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg(path)
+                .status()
+                .expect("failed to open image");
+        }
+    }
+
+    std::fs::write("tree.dot", dot).unwrap();
+    use std::process::Command;
+    Command::new("dot")
+        .args(&["-Tsvg", "tree.dot", "-o", "tree.svg"])
+        .output()
+        .expect("Failed to execute dot command");
+    Command::new("dot")
+        .args(["-Tpng", "tree.dot", "-o", "tree.png"])
+        .status()
+        .expect("Failed to run dot");
+
+    open_image("tree.svg");
+    result
 }
 
 fn main() {
