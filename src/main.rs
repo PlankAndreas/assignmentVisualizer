@@ -122,7 +122,7 @@ use std::collections::HashMap;
 
 type Assignment = HashMap<i32, bool>;
 
-fn count_models(q: &QDimacs) -> u64 {
+fn count_models(q: &QDimacs) -> (u64, u64) {
     let vars: Vec<i32> = q
     .quantifiers
     .iter()
@@ -154,13 +154,15 @@ fn count_models(q: &QDimacs) -> u64 {
         assignment: &mut Assignment,
         eval_formula: &dyn Fn(&QDimacs, &Assignment) -> bool,
         dot: &mut String,
+        dot2: &mut String,
         next_id: &mut usize,
-    ) -> (u64, usize) {
+    ) -> (u64, u64, usize) {
         let my_id = *next_id;
         *next_id += 1;
         // leaf: all variables assigned
         if depth == vars.len() {
             let value = if eval_formula(q, assignment) { 1 } else { 0 };
+            let valuef = if eval_formula(q, assignment) { 0 } else { 1 };
 
             let color = if value == 1 { "green" } else { "gray" };
 
@@ -168,32 +170,38 @@ fn count_models(q: &QDimacs) -> u64 {
                 r#"{id} [label="{value}", shape=box, color="{color}"];"#,
                 id = my_id
             ));
+            dot2.push_str(&format!(
+                r#"{id} [label="{value}", shape=box, color="{color}"];"#,
+                id = my_id
+            ));
 
-            return (value, my_id);
+            return (value, valuef, my_id);
         }
 
         let var = vars[depth];
 
         // left branch: false
         assignment.insert(var, false);
-        let (left, left_id) = dfs(
+        let (left, left2, left_id) = dfs(
             q,
             vars,
             depth + 1,
             assignment,
             eval_formula,
             dot,
+            dot2,
             next_id,
         );
         // right branch: true
         assignment.insert(var, true);
-        let (right, right_id) = dfs(
+        let (right, right2, right_id) = dfs(
             q,
             vars,
             depth + 1,
             assignment,
             eval_formula,
             dot,
+            dot2,
             next_id,
         );
         let is_universal = q.quantifiers.iter().any(|block| {
@@ -205,6 +213,11 @@ fn count_models(q: &QDimacs) -> u64 {
         } else {
             left + right
         };
+        let weight2 = if is_universal {
+            left2 + right2
+        } else {
+            left2 * right2
+        };
         let qsymbol = if is_universal { "A" } else { "E" };
         let color = if is_universal { "red" } else { "blue" };
 
@@ -215,8 +228,20 @@ fn count_models(q: &QDimacs) -> u64 {
             q = qsymbol,
             w = weight,
         ));
+        dot2.push_str(&format!(
+            r#"{id} [label="x{var}\n{q}\nw={w}", color="{color}"];"#,
+            id = my_id,
+            var = var,
+            q = qsymbol,
+            w = weight2,
+        ));
 
         dot.push_str(&format!(
+            r#"{parent} -> {child} [label="0"];"#,
+            parent = my_id,
+            child = left_id,
+        ));
+        dot2.push_str(&format!(
             r#"{parent} -> {child} [label="0"];"#,
             parent = my_id,
             child = left_id,
@@ -227,26 +252,62 @@ fn count_models(q: &QDimacs) -> u64 {
             parent = my_id,
             child = right_id,
         ));
-        (weight, my_id)
+        dot2.push_str(&format!(
+            r#"{parent} -> {child} [label="1"];"#,
+            parent = my_id,
+            child = right_id,
+        ));
+        (weight, weight2, my_id)
     }
 
     let mut assignment = HashMap::new();
     let mut dot = String::from("digraph G {\n");
+    let mut dot2 = String::from("digraph G {\n");
     dot.push_str("node [shape=circle];\n");
+    dot2.push_str("node [shape=circle];\n");
 
     let mut next_id = 0;
 
-    let (result, _) = dfs(
+    let (t, f, _) = dfs(
         q,
         &vars,
         0,
         &mut assignment,
         &eval_formula,
         &mut dot,
+        &mut dot2,
         &mut next_id,
     );
-    dot.push_str("}\n");
 
+    
+    let is_sat = t > 0;
+    let status = if is_sat { "SAT" } else { "UNSAT" };
+    let textcolor = if t > 0 { "forestgreen" } else { "red" };
+
+    dot.push_str(&format!(
+        "label=\"QBF: {}\\nT={}\";\n",
+        status, t
+    ));
+    dot.push_str(&format!(
+        "fontcolor=\"{}\";\n",
+        textcolor
+    ));
+
+    dot.push_str("labelloc=top;\n");
+    dot.push_str("fontsize=20;\n");
+    dot2.push_str(&format!(
+        "label=\"QBF: {}\\nF={}\";\n",
+        status, f
+    ));
+    dot2.push_str(&format!(
+        "fontcolor=\"{}\";\n",
+        textcolor
+    ));
+
+    dot2.push_str("labelloc=top;\n");
+    dot2.push_str("fontsize=20;\n");
+    dot.push_str("}\n");
+    dot2.push_str("}\n");
     fn open_image(path: &str) {
         #[cfg(target_os = "windows")]
         {
@@ -273,10 +334,15 @@ fn count_models(q: &QDimacs) -> u64 {
         }
     }
 
-    std::fs::write("tree.dot", dot).unwrap();
+    if t == 0 {
+        std::fs::write("tree.dot", dot2).unwrap();
+    } else {
+        std::fs::write("tree.dot", dot).unwrap();
+    }
+    
     use std::process::Command;
     Command::new("dot")
-        .args(&["-Tsvg", "tree.dot", "-o", "tree.svg"])
+        .args(&["-Tpng", "tree.dot", "-o", "tree.png"])
         .output()
         .expect("Failed to execute dot command");
     Command::new("dot")
@@ -284,17 +350,22 @@ fn count_models(q: &QDimacs) -> u64 {
         .status()
         .expect("Failed to run dot");
 
-    open_image("tree.svg");
-    result
+    open_image("tree.png");
+    (t, f)
 }
 
 fn main() {
-    let qdimacs = parse_file("example.qdimacs").unwrap();
+    let qdimacs = parse_file("example3.qdimacs").unwrap();
     print_qdimacs(&qdimacs);
 
-    let count = count_models(&qdimacs);
+    let (count_t, count_f) = count_models(&qdimacs);
 
-    println!("Model count: {}", count);
+    if count_t > 0 {
+        println!("Model count: {}", count_t);
+    } else {
+        println!("Countermodel count: {}", count_f);
+    }
+    
 
     println!("Hello, world!");
 }
