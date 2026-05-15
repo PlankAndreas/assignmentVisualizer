@@ -164,7 +164,7 @@ fn count_models(q: &QDimacs) -> (u64, u64) {
             let value = if eval_formula(q, assignment) { 1 } else { 0 };
             let valuef = if eval_formula(q, assignment) { 0 } else { 1 };
 
-            let color = if value == 1 { "green" } else { "gray" };
+            let color = if value == 1 { "darkgreen" } else { "gray" };
 
             dot.push_str(&format!(
                 r#"{id} [label="{value}", shape=box, color="{color}"];"#,
