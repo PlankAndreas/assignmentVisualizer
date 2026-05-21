@@ -39,7 +39,7 @@ fn parse_quantifier(line: &str) -> QuantifierBlock {
     };
     let vars: Vec<i32> = line
         .split_whitespace()
-        .skip(1)    
+        .skip(1)
         .filter_map(|s| s.parse::<i32>().ok())
         .take_while(|&x| x != 0)
         .collect();
@@ -81,18 +81,17 @@ fn parse_file(path: &str) -> std::io::Result<QDimacs> {
             quantifiers.push(qblock);
             continue;
         }
-
         // 3. clauses
         else if line.chars().next().unwrap().is_digit(10) || line.starts_with('-') {
-        let clause = parse_clause(&line);
-        clauses.push(clause);
-}
+            let clause = parse_clause(&line);
+            clauses.push(clause);
+        }
 
         println!("{line}");
     }
-    
+
     let (num_vars, num_clauses) = header.unwrap();
-    let qdimacs:QDimacs = QDimacs {
+    let qdimacs: QDimacs = QDimacs {
         num_vars,
         num_clauses,
         quantifiers,
@@ -124,10 +123,10 @@ type Assignment = HashMap<i32, bool>;
 
 fn count_models(q: &QDimacs) -> (u64, u64) {
     let vars: Vec<i32> = q
-    .quantifiers
-    .iter()
-    .flat_map(|block| block.vars.iter().copied())
-    .collect();
+        .quantifiers
+        .iter()
+        .flat_map(|block| block.vars.iter().copied())
+        .collect();
 
     fn eval_clause(clause: &Clause, assignment: &Assignment) -> bool {
         for &lit in clause {
@@ -144,7 +143,9 @@ fn count_models(q: &QDimacs) -> (u64, u64) {
     }
 
     fn eval_formula(q: &QDimacs, assignment: &Assignment) -> bool {
-        q.clauses.iter().all(|clause| eval_clause(clause, assignment))
+        q.clauses
+            .iter()
+            .all(|clause| eval_clause(clause, assignment))
     }
 
     fn dfs(
@@ -205,8 +206,7 @@ fn count_models(q: &QDimacs) -> (u64, u64) {
             next_id,
         );
         let is_universal = q.quantifiers.iter().any(|block| {
-            matches!(block.qtype, QuantifierType::ForAll)
-            && block.vars.contains(&var)
+            matches!(block.qtype, QuantifierType::ForAll) && block.vars.contains(&var)
         });
         let weight = if is_universal {
             left * right
@@ -279,30 +279,17 @@ fn count_models(q: &QDimacs) -> (u64, u64) {
         &mut next_id,
     );
 
-    
     let is_sat = t > 0;
     let status = if is_sat { "SAT" } else { "UNSAT" };
     let textcolor = if t > 0 { "forestgreen" } else { "red" };
 
-    dot.push_str(&format!(
-        "label=\"QBF: {}\\nT={}\";\n",
-        status, t
-    ));
-    dot.push_str(&format!(
-        "fontcolor=\"{}\";\n",
-        textcolor
-    ));
+    dot.push_str(&format!("label=\"QBF: {}\\nT={}\";\n", status, t));
+    dot.push_str(&format!("fontcolor=\"{}\";\n", textcolor));
 
     dot.push_str("labelloc=top;\n");
     dot.push_str("fontsize=20;\n");
-    dot2.push_str(&format!(
-        "label=\"QBF: {}\\nF={}\";\n",
-        status, f
-    ));
-    dot2.push_str(&format!(
-        "fontcolor=\"{}\";\n",
-        textcolor
-    ));
+    dot2.push_str(&format!("label=\"QBF: {}\\nF={}\";\n", status, f));
+    dot2.push_str(&format!("fontcolor=\"{}\";\n", textcolor));
 
     dot2.push_str("labelloc=top;\n");
     dot2.push_str("fontsize=20;\n");
@@ -339,7 +326,7 @@ fn count_models(q: &QDimacs) -> (u64, u64) {
     } else {
         std::fs::write("tree.dot", dot).unwrap();
     }
-    
+
     use std::process::Command;
     Command::new("dot")
         .args(&["-Tpng", "tree.dot", "-o", "tree.png"])
@@ -365,7 +352,6 @@ fn main() {
     } else {
         println!("Countermodel count: {}", count_f);
     }
-    
 
-    println!("Hello, world!");
+    println!("Hello, worldd!");
 }
